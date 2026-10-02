@@ -73,7 +73,19 @@ void main() {
   mist += (noise(px*.8)-.5)*.018;
   mist = lens(mist,vUv,moisture(px+37.0,7.5,.37),.65);
   mist = lens(mist,vUv,moisture(px,15.5,1.0),1.0);
+  mist = lens(mist,vUv,moisture(px+vec2(13.0,51.0),61.0,1.65),.92);
   vec3 color = mix(mist,sharp,clear);
+  // Wiping leaves a thin transparent film and sparse small beads, not old rivulets.
+  // This residue is separate from the running-water map that a wipe erases.
+  float wiped = smoothstep(.2,.95,texture2D(uDryMask,vUv).a);
+  float film = noise(vec2(px.x*.055,px.y*.009));
+  vec2 filmNormal = vec2(noise(px*.018)-.5,noise(px*.018+18.0)-.5);
+  vec3 dampImage = texture2D(uBackground,cover(vUv+filmNormal*pixel*.65)).rgb;
+  color = mix(color,dampImage,wiped*.14);
+  color += wiped*(.002+pow(film,5.0)*.013);
+  vec4 residue = moisture(px+vec2(71.0,29.0),27.0,.52);
+  float sparse = smoothstep(.80,.94,noise(px/38.0));
+  color = lens(color,vUv,residue,wiped*sparse*.65);
   color *= 1.0-edge*.10;
   color += edge*.02+max(0.0,-slope.y)*.055;
 

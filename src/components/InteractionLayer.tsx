@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
+import { createRunoff, advanceRunoff, type Runoff } from '../effects/runoffMotion'
 
 type Props = {
   width: number
@@ -9,7 +10,7 @@ type Props = {
   onWaterTextureReady: (texture: THREE.CanvasTexture) => void
   onFirstInteraction?: () => void
 }
-type Runoff = { x: number; y: number; startY: number; speed: number; radius: number; remaining: number; phase: number }
+
 
 export function InteractionLayer({ width, height, onMaskTextureReady, onWaterTextureReady, onDryTextureReady, onFirstInteraction }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null)
@@ -109,7 +110,7 @@ export function InteractionLayer({ width, height, onMaskTextureReady, onWaterTex
         if (px < 0 || px >= width || py < 0 || py >= height) continue
         const wet = ctx.getImageData(Math.floor(px), Math.floor(py + 3), 1, 1).data[0]
         if (wet > 180 || runoff.current.length >= 70) continue
-        runoff.current.push({ x: px, y: py + 6, startY: py, speed: 4 + Math.random() * 10, radius: 3.3 + Math.random() * 1.9, remaining: 110 + Math.random() * 230, phase: Math.random() * 6.28 })
+        runoff.current.push(createRunoff(px, py + 8))
       }
     }
     last.current = { x, y }
@@ -138,15 +139,10 @@ export function InteractionLayer({ width, height, onMaskTextureReady, onWaterTex
         ctx.lineCap = 'round'
         for (const drop of runoff.current) {
           const oldX = drop.x, oldY = drop.y
-          // Surface tension produces a brief stick/slip motion before gravity wins.
-          const slip = .45 + .55 * Math.pow(Math.sin(now * .0016 + drop.phase), 2)
-          drop.speed = Math.min(115, drop.speed + dt * 19)
-          const travel = Math.min(drop.remaining, drop.speed * dt * slip)
-          drop.y += travel
-          drop.x += Math.sin((drop.y - drop.startY) * .035 + drop.phase) * travel * .065
-          drop.remaining -= travel
+          advanceRunoff(drop, dt)
+          if (drop.y === oldY) continue
           ctx.strokeStyle = '#ffffff'
-          ctx.lineWidth = drop.radius * .92
+          ctx.lineWidth = drop.radius * .70
           ctx.beginPath()
           ctx.moveTo(oldX, oldY)
           ctx.lineTo(drop.x, drop.y)
@@ -155,7 +151,7 @@ export function InteractionLayer({ width, height, onMaskTextureReady, onWaterTex
           trails.save()
           trails.lineCap = 'round'
           trails.strokeStyle = 'rgba(255,255,255,.24)'
-          trails.lineWidth = drop.radius * .80
+          trails.lineWidth = drop.radius * (.46 + .12 * Math.sin(drop.y * .08 + drop.phase))
           trails.shadowColor = 'rgba(255,255,255,.35)'
           trails.shadowBlur = 1.5
           trails.beginPath()
@@ -175,7 +171,9 @@ export function InteractionLayer({ width, height, onMaskTextureReady, onWaterTex
         for (const drop of runoff.current) {
           water.save()
           water.translate(drop.x, drop.y)
-          water.scale(1, 1.2 + drop.speed / 230)
+          water.rotate(-Math.atan2(drop.vx, Math.max(15, drop.speed)) * .4)
+          const stretch = drop.pinnedFor > 0 ? 1.06 : 1.12 + drop.speed / 260
+          water.scale(1, stretch)
           const dome = water.createRadialGradient(0, 0, 0, 0, 0, drop.radius)
           dome.addColorStop(0, 'white')
           dome.addColorStop(.45, '#d9d9d9')
@@ -194,7 +192,7 @@ export function InteractionLayer({ width, height, onMaskTextureReady, onWaterTex
         if (waterTexture.current) waterTexture.current.needsUpdate = true
         for (const drop of runoff.current) {
           if (drop.remaining <= 0) {
-            trails.drawImage(waterCanvas.current!, Math.floor(drop.x - 7), Math.floor(drop.y - 10), 14, 20, Math.floor(drop.x - 7), Math.floor(drop.y - 10), 14, 20)
+            trails.drawImage(waterCanvas.current!, Math.floor(drop.x - 12), Math.floor(drop.y - 17), 24, 34, Math.floor(drop.x - 12), Math.floor(drop.y - 17), 24, 34)
           }
         }
         runoff.current = runoff.current.filter(d => d.remaining > 0 && d.y < height + 8)
